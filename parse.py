@@ -1,16 +1,18 @@
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 
 import bs4
 from feedgen.feed import FeedGenerator
 
-AAS_ROOT_URL = "https://aas.org/jobregister"
+AAS_ROOT_URL = "https://aas.org"
 FEED_URL = "https://cosroe.com/astro-job-centre.atom"
 
+
 def parse_date(s: str) -> datetime:
-    return datetime.strptime(s, "%Y/%m/%d")
+    return datetime.strptime(s, "%Y/%m/%d").replace(tzinfo=timezone.utc)
+
 
 @dataclass()
 class Posting:
@@ -20,6 +22,7 @@ class Posting:
     posted: datetime
     deadline: datetime
     link: str
+
 
 # read from stdin
 content = sys.stdin.read()
@@ -45,37 +48,44 @@ for tr in tr_itt:
         next(tds).text.strip(),
         parse_date(next(tds).text.strip()),
         parse_date(next(tds).text.strip()),
-        os.path.join(AAS_ROOT_URL, link),
+        AAS_ROOT_URL + link,
     )
     postings.append(p)
 
 # sort the register by when they were posted (most recent at
 # the top)
-postings = sorted(postings, key = lambda i: i.posted, reverse=True)
+postings = sorted(postings, key=lambda i: i.posted, reverse=True)
 
 # now create atom feed from postings
 feed = FeedGenerator()
 feed.language("en")
 feed.title("Astrophysics Job Centre+")
-feed.link(href = FEED_URL, rel = "self")
-feed.link(href = AAS_ROOT_URL, rel = "via")
-feed.description("An RSS feed that mirrors the job listings posted to the AAS job register")
+feed.link(href=FEED_URL, rel="self")
+feed.link(href=AAS_ROOT_URL + "/jobregister/", rel="via")
+feed.description(
+    "An RSS feed that mirrors the job listings posted to the AAS job register"
+)
 feed.author({"name": "Fergus Baker", "email": "fergus@cosroe.com"})
 feed.id(FEED_URL)
 
 for posting in postings:
     entry = feed.add_entry()
     entry.title(posting.title)
-    entry.link(href=posting.link, rel="self")
+    entry.link(href=posting.link, rel="via")
     entry.id(posting.link)
+    entry.published(posting.posted)
+    entry.updated(posting.posted)
     entry.content(
         """
-        Instituion: {}
+        Institution: {}
 
         Location: {}
 
         Deadline: {}
-        """.format(posting.institution, posting.location, posting.deadline)
+        """.format(
+            posting.institution, posting.location, posting.deadline
+        ),
+        type="text",
     )
 
 feed.atom_file("astro-job-centre.atom", pretty=True)
